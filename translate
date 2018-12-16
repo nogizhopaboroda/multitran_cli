@@ -1,0 +1,251 @@
+#!/usr/bin/env python
+# coding=utf-8
+# -*- coding: utf-8 -*-
+
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+
+import argparse
+import urllib2
+from HTMLParser import HTMLParser
+import re
+
+import pdb
+
+
+"""
+data = [
+ {
+     'head': {
+         'title': 'test',
+         'type': 'сущ'
+     },
+     'body': [
+         {
+             'type': 'общ.',
+             'words': [
+                 {
+                     'word': 'проба'
+                 },
+                 {
+                     'word': 'щиток',
+                     'comment': '(беспозвоночных животных)'
+                 },
+             ]
+         },
+         {
+             'type': 'авиа.',
+             'words': [
+                 {
+                     'word': 'диагностика',
+                     'comment': '(двигателя)'
+                 },
+             ]
+         },
+     ]
+ },
+]
+"""
+
+colors = {
+    'CYAN': '\033[1;36m',
+    'GREEN': '\033[0;32m',
+    'RED': '\033[1;31m',
+    'BOLD': '\033[;1m',
+    'ITALIC': '\x1B[3m',
+    'END': '\033[0;0m'
+}
+
+def italic(string):
+    return '{}{}{}'.format(colors['ITALIC'], string, '\x1B[23m')
+
+def bold(string):
+    return '{}{}{}'.format('\033[1m', string, colors['END'])
+
+def green(string):
+    return '{}{}{}'.format(colors['GREEN'], string, colors['END'])
+
+def red(string):
+    return '{}{}{}'.format(colors['RED'], string, colors['END'])
+
+def cyan(string):
+    return '{}{}{}'.format(colors['CYAN'], string, colors['END'])
+
+def process_word(item):
+    output = green(item['word'])
+    additional = item.get('additional', None)
+    comment = item.get('comment', None)
+    if(additional):
+        output += italic(' ({})'.format(additional))
+    if(comment):
+        output += italic(' {}'.format(comment))
+    return output
+
+
+class MyHTMLParser(HTMLParser):
+    def __init__(self):
+        HTMLParser.__init__(self)
+        self._char_buffer = []
+        self._start_parsing_table = False
+        self._is_search_form = False
+        self._is_header = False
+        self._is_header_type = False
+        self._td_index = 0
+        self._collect_data = False
+        self._data = []
+        self._current_tag = None
+        self._is_link = False
+        self._is_italic = False
+
+    def handle_starttag(self, tag, attrs):
+        self._current_tag = tag
+        if tag == 'form' and dict(attrs).get('id') == 'translation':
+            self._is_search_form = True
+
+        elif tag == 'td' and self._start_parsing_table == True:
+            self._collect_data = True
+            self._td_index += 1
+            if dict(attrs).has_key('bgcolor'):
+                self._td_index += 0
+                self._is_header = True
+                self._data.append({
+                    'head': {
+                        'title': '',
+                        'type': ''
+                    },
+                    'body': [],
+                })
+            elif self._td_index == 1:
+                self._data[-1]['body'].append({
+                    'type': '',
+                    'words': []
+                })
+
+        elif tag == 'tr' and self._start_parsing_table == True:
+            self._td_index = 0
+
+        elif tag == 'em' and self._is_header:
+            self._is_header_type = True
+
+        elif tag == 'a':
+            self._is_link = True
+
+        elif tag == 'i':
+            self._is_italic = True
+
+    def handle_endtag(self, tag):
+        if tag == 'form' and self._is_search_form == True:
+            self._is_search_form = True
+            self._start_parsing_table = True
+
+        elif tag == 'table' and self._start_parsing_table == True:
+            self._start_parsing_table = False
+
+        elif tag == 'td':
+            self._is_header = False
+            self._collect_data = False
+
+        elif tag == 'em' and self._is_header:
+            self._is_header_type = False
+            self._is_header = False
+            self._collect_data = False
+
+        elif tag == 'a':
+            self._is_link = False
+
+        elif tag == 'i':
+            self._is_italic = False
+
+    def handle_data(self, string):
+        if self._collect_data != True:
+            return
+
+        data = string.strip()
+
+        if self._current_tag == 'em' and self._is_header == True:
+            self._data[-1]['head']['type'] = data
+
+        elif self._is_header == True:
+            self._data[-1]['head']['title'] += data
+
+        elif self._td_index == 1:
+            self._data[-1]['body'][-1]['type'] += data
+
+        elif self._td_index == 2:
+            if self._is_link and not self._is_italic:
+                self._data[-1]['body'][-1]['words'].append({
+                    'word': data
+                })
+            if not self._is_link and self._is_italic:
+                self._data[-1]['body'][-1]['words'][-1]['additional'] = data
+            elif re.search(r'\((.*?)\)', data):
+                self._data[-1]['body'][-1]['words'][-1]['comment'] = data
+
+    def get_data(self):
+        return self._data
+
+
+LANGUAGES = {
+    'en': 1,
+    'de': 3,
+    'fr': 4,
+    'es': 5,
+    'it': 23
+}
+
+
+
+arg_parser=argparse.ArgumentParser()
+
+arg_parser.add_argument('-R', '--reverse', action="store_true", default=False, help='Reverse data (last block to first block)')
+arg_parser.add_argument('-S', '--short', action="store_true", default=False, help='Print short output (only first block)')
+arg_parser.add_argument('-L', '--lang', nargs='?', default='en', help='Language')
+arg_parser.add_argument('--lang-list', action="store_true", default=False, help='Print languages list and exit')
+arg_parser.add_argument('word', nargs='?', help='word to translate')
+
+args = arg_parser.parse_args()
+
+
+if args.lang_list is True:
+    for lang_key in LANGUAGES.keys():
+        if lang_key == 'en':
+            print('{} {}'.format(green(lang_key), '(default)'))
+        else:
+            print(lang_key)
+    sys.exit()
+
+if args.word is None:
+    arg_parser.print_help()
+    sys.exit()
+
+
+
+link = 'https://www.multitran.ru/c/m.exe?s={}&l1={}'.format(args.word, LANGUAGES[args.lang])
+
+response = urllib2.urlopen(link)
+html = unicode(response.read(), 'windows-1251')
+
+parser = MyHTMLParser()
+parser.feed(html)
+
+
+data = parser.get_data()
+for index, item in enumerate(data if args.reverse is not True else data[::-1]):
+    if index > 0: print('\n\n')
+
+    print('{} ({})'.format(bold(red(item['head']['title'])), italic(item['head']['type'])))
+    sub_items = item['body']
+    for sub_item in sub_items if args.reverse is not True else sub_items[::-1]:
+        words = sub_item['words']
+        words_processed = map(process_word, words)
+        print('{}: {}'.format(italic(sub_item['type']), ', '.join(words_processed)))
+
+        if args.short is True: break
+
+    if args.short is True: break
+
+print('\n\nweb link: {}'.format(bold(link)))
+
+
