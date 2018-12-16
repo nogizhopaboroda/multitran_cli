@@ -1,7 +1,28 @@
 # multitran_cli
 Command-line interface for multitran.ru
 
-# usage
+# installation
+
+## with zplug
+
+```sh
+zplug "nogizhopaboroda/multitran_cli", as:command, use:translate
+```
+
+## manual
+
+```sh
+curl https://github.com/nogizhopaboroda/multitran_cli/blob/master/translate -o /usr/local/bin/translate && chmod +x /usr/local/bin/translate
+```
+
+
+## can be used directly from github
+
+```sh
+python <(curl -fsSL https://raw.githubusercontent.com/nogizhopaboroda/multitran_cli/master/translate) [arguments]
+```
+
+# arguments
 
 ```sh
 $ translate
