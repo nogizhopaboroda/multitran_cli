@@ -226,7 +226,7 @@ if args.word is None:
 
 
 
-link = 'https://www.multitran.ru/c/m.exe?s={word}&l1={lang1}&l2={lang2}&l1={lang2}&l2={lang1}'.format(**{
+link = 'https://www.multitran.ru/m.exe?s={word}&l1={lang1}&l2={lang2}&l1={lang2}&l2={lang1}'.format(**{
     'word': quote_plus(args.word.encode('utf-8')),
     'lang1': LANGUAGES[args.lang],
     'lang2': LANGUAGES[args.lang1],
